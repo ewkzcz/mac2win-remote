@@ -1,0 +1,14 @@
+#!/bin/bash
+# wsh '<PowerShell>'  在 Windows 上执行（不切目录、不等同步），用于系统级操作；无参数时从 stdin 读脚本
+set -euo pipefail
+ENV_FILE=~/.config/wr/env
+[ -f $ENV_FILE ] || { echo "wsh: 缺少配置 $ENV_FILE" >&2; exit 2; }
+. $ENV_FILE
+: "${WR_HOST:?未设置}" "${WR_TOOLS:?未设置}"
+body="${1:-$(cat)}"
+script="\$ProgressPreference='SilentlyContinue'; \$PSStyle.OutputRendering='PlainText'
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new(\$false)
+\$env:Path='$WR_TOOLS;'+\$env:Path
+$body"
+enc=$(printf '%s' "$script" | iconv -f UTF-8 -t UTF-16LE | base64 | tr -d '\n')
+exec ssh -n "$WR_HOST" pwsh -NoProfile -NonInteractive -OutputFormat Text -EncodedCommand "$enc"

@@ -1,0 +1,27 @@
+#!/bin/bash
+# wr '<PowerShell 命令>'  在当前目录对应的 Windows 目录执行；先等同步完成，返回输出和退出码
+set -euo pipefail
+ENV_FILE=~/.config/wr/env
+[ -f $ENV_FILE ] || { echo "wr: 缺少配置 $ENV_FILE" >&2; exit 2; }
+. $ENV_FILE
+: "${WR_HOST:?未设置}" "${WR_LOCAL_ROOT:?未设置}" "${WR_REMOTE_ROOT:?未设置}" "${WR_TOOLS:?未设置}" "${WR_FLUSH:=wr-flush}"
+[ $# -gt 0 ] || { echo "用法: wr '<PowerShell 命令>'" >&2; exit 2; }
+
+root=$(cd "$WR_LOCAL_ROOT" && pwd -P); here=$(pwd -P)
+case "$here/" in "$root"/*) ;; *) echo "wr: 当前目录不在 $WR_LOCAL_ROOT 下" >&2; exit 2 ;; esac
+rel="${here#"$root"}"
+win_dir="${WR_REMOTE_ROOT}${rel//\//\\}"
+sq="'"; win_dir="${win_dir//$sq/$sq$sq}"
+
+"$WR_FLUSH" || true
+
+script="\$ErrorActionPreference='Stop'; \$ProgressPreference='SilentlyContinue'; \$PSStyle.OutputRendering='PlainText'
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new(\$false)
+\$env:Path='$WR_TOOLS;'+\$env:Path
+Set-Location -LiteralPath '$win_dir'
+$*
+if (\$null -ne \$LASTEXITCODE) { exit \$LASTEXITCODE }"
+
+# EncodedCommand 避免 bash/cmd/pwsh 三层转义；-OutputFormat Text 避免报错和进度以 CLIXML 输出
+enc=$(printf '%s' "$script" | iconv -f UTF-8 -t UTF-16LE | base64 | tr -d '\n')
+exec ssh -n "$WR_HOST" pwsh -NoProfile -NonInteractive -OutputFormat Text -EncodedCommand "$enc"

@@ -1,0 +1,15 @@
+#!/bin/bash
+# wr-flush  让 Syncthing 立即扫描本地改动，并等待 Windows 端同步完成（最多 30 秒）
+[ -f ~/.config/wr/env ] && . ~/.config/wr/env
+: "${ST_URL:=http://127.0.0.1:8384}"
+[ -n "${ST_KEY:-}" ] && [ -n "${ST_DEVICE:-}" ] && [ -n "${ST_FOLDER:-}" ] || { echo "wr-flush: 未配置 ST_KEY/ST_DEVICE/ST_FOLDER，跳过" >&2; exit 0; }
+api() { curl -fsS --noproxy '*' -H "X-API-Key: $ST_KEY" "$@"; }
+
+api -X POST "$ST_URL/rest/db/scan?folder=$ST_FOLDER" >/dev/null || exit 0
+for _ in $(seq 60); do
+  state=$(api "$ST_URL/rest/db/status?folder=$ST_FOLDER" | jq -r .state)
+  need=$(api "$ST_URL/rest/db/completion?folder=$ST_FOLDER&device=$ST_DEVICE" | jq -r '.needItems + .needDeletes')
+  [ "$state" = idle ] && [ "$need" = 0 ] && exit 0
+  sleep 0.5
+done
+echo "wr-flush: 30 秒内没有同步完，继续执行（同步状态见 $ST_URL）" >&2

@@ -1,0 +1,7 @@
+#!/bin/bash
+# wshot [名字]  截取 Windows 桌面，等待同步回 Mac 后输出本地图片路径（需在 WR_LOCAL_ROOT 下执行）
+set -euo pipefail
+name="${1:-shot-$(date +%Y%m%d-%H%M%S)}"
+rel=$(wr "Screenshot.ps1 -Name '$name'" | tr -d '\r' | tail -1)
+for _ in $(seq 60); do [ -s "$rel" ] && { sleep 0.5; echo "$PWD/$rel"; exit 0; }; sleep 0.5; done
+echo "wshot: 截图已在 Windows 生成，但 30 秒内没有同步回 Mac" >&2; exit 1
